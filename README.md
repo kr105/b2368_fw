@@ -1,5 +1,5 @@
 # b2368_fw
-Small tool to test, extract and create binary firmware image files for Huawei B2368 device. It might work for other devices using the same firmware image format but it is not tested.
+Small tool to test, extract and create binary firmware image files for Huawei B2368-57 device and similar. It does not work for B2368-A22 (it uses a completely different hardware architecture). It might work for other devices using the same firmware image format but it is not tested.           
 
 This tool is very alpha, I plan to add more features later on but right now it does the bare minimum.
 
@@ -24,9 +24,12 @@ Creates a valid firmware file from 'kernel.bin' and 'rootfs.bin' files.
 
 
 ## Info
+- The device identifies the firmware package as RAS
+
+- File format: [Kernel (always 4096 bytes)] + [RootFS] + [Trailer]
 
 - unk1 to unk8 fields on mstc_trailer struct are items that I could not figure out what they are for yet but based on reverse engineering the firmware upgrade routine on the device, they are not used, so they are set as 0x00 for now.
 
-- The device checks the filename of the firmware file, it must be like B2368_*.bin or it won't even bother checking the file.
+- The device checks the filename of the firmware file, it must be like B2368_*.bin or it won't even bother checking the file contents.
 
 **Note: I do not guarantee that this will work for your device, at the very least you should make sure that the original firmware file pass all checks on the -t option to discard your device using a customized variation of this format.**

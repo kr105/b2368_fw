@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2020 Carlos Pizarro <kr105@kr105.com>
+// Copyright (c) 2020-2021 Carlos Pizarro <kr105@kr105.com>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files(the "Software"), to deal
@@ -27,8 +27,6 @@
 #include <arpa/inet.h>
 
 #include "sha2.h"
-
-// Tip: The device identifies the firmware package as RAS
 
 typedef enum { HELP, TEST, EXTRACT, CREATE } runmode;
 
@@ -500,6 +498,8 @@ int main(int argc, const char* argv[])
 		// Fill flags
 		trailer.fs_type = 1;
 		trailer.image_type = 1;
+
+		// This flags are always set to this values on all original firmware samples I got
 		trailer.unk1 = 2;
 		trailer.unk2 = 0;
 
