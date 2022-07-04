@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2020-2021 Carlos Pizarro <kr105@kr105.com>
+// Copyright (c) 2020-2022 Carlos Pizarro <kr105@kr105.com>
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files(the "Software"), to deal
@@ -24,7 +24,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+
+#ifdef _WIN32
+#include <winsock.h>
+#else
 #include <arpa/inet.h>
+#endif
 
 #include "sha2.h"
 
@@ -51,6 +56,8 @@ struct mstc_trailer {
 
 #define MSTC_TRAILER_MAGIC 0x1B05CE17
 #define MSTC_TRAILER_SIZE sizeof(struct mstc_trailer)
+
+#define KERNEL_SIZE (4 * 1024 * 1024) // 4MB
 
 /* Copyright (C) 1986 Gary S. Brown.  You may use this program, or
    code or tables extracted from it, as desired without restriction. */
@@ -410,6 +417,7 @@ int main(int argc, const char* argv[])
 		uint32_t crc;
 		uint32_t kernelsize = 0;
 		uint32_t rootfssize = 0;
+		uint32_t totalsize = 0;
 		uint32_t bytesread = 0;
 		uint8_t* filebody = NULL;
 		uint8_t* kerneldata = NULL;
@@ -423,15 +431,7 @@ int main(int argc, const char* argv[])
 		// Try opening kernel file
 		kernelp = fopen(kernelfile, "rb");
 		if (kernelp == NULL) {
-			perror("Fail opening kernel file for reading:");
-			return 1;
-		}
-
-		// Try opening rootfs file
-		rootfsp = fopen(rootfsfile, "rb");
-		if (rootfsp == NULL) {
-			perror("Fail opening rootfs file for reading:");
-			fclose(kernelp);
+			perror("Fail opening kernel file for reading.");
 			return 1;
 		}
 
@@ -440,20 +440,47 @@ int main(int argc, const char* argv[])
 		kernelsize = ftell(kernelp);
 		rewind(kernelp);
 
+		if (kernelsize > KERNEL_SIZE) {
+			perror("Kernel file size is too large (Limit is 4MB)");
+			fclose(kernelp);
+			return 1;
+		}
+
+		// Try opening rootfs file
+		rootfsp = fopen(rootfsfile, "rb");
+		if (rootfsp == NULL) {
+			perror("Fail opening rootfs file for reading.");
+			fclose(kernelp);
+			return 1;
+		}
+
 		// Find rootfs file size
 		fseek(rootfsp, 0L, SEEK_END);
 		rootfssize = ftell(rootfsp);
 		rewind(rootfsp);
 
+		// Total file size
+		totalsize = KERNEL_SIZE + rootfssize;
+
 		// Alloc buffers
 		kerneldata = (uint8_t*)malloc(kernelsize);
 		rootfsdata = (uint8_t*)malloc(rootfssize);
-		filebody = (uint8_t*)malloc(kernelsize + rootfssize);
+		filebody = (uint8_t*)malloc(totalsize);
+
+		if (kerneldata == 0 || rootfsdata == 0 || filebody == 0) {
+			perror("Error allocating memory");
+			fclose(kernelp);
+			fclose(rootfsp);
+			free(filebody);
+			free(kerneldata);
+			free(rootfsdata);
+			return 1;
+		}
 
 		// Try reading kernel file
 		bytesread = fread(kerneldata, 1, kernelsize, kernelp);
 		if (bytesread != kernelsize) {
-			printf("Fail reading kernel file.\n");
+			perror("Fail reading kernel file.\n");
 			fclose(kernelp);
 			fclose(rootfsp);
 			free(filebody);
@@ -474,8 +501,11 @@ int main(int argc, const char* argv[])
 			return 1;
 		}
 
+		// Original firmware has the remaining space for kernel part filled with 0xFF
+		memset(filebody, 0xFF, totalsize);
+
 		memcpy(filebody, kerneldata, kernelsize);
-		memcpy(filebody + kernelsize, rootfsdata, rootfssize);
+		memcpy(filebody + KERNEL_SIZE, rootfsdata, rootfssize);
 
 		// Init the trailer
 		memset(&trailer, 0x00, MSTC_TRAILER_SIZE);
@@ -485,7 +515,7 @@ int main(int argc, const char* argv[])
 		trailer.fs_len = rootfssize;
 
 		// Calculate CRC32 of the file
-		crc = crc32buf(filebody, kernelsize + rootfssize);
+		crc = crc32buf(filebody, totalsize);
 		trailer.crc32 = htonl(crc);
 
 		// Calculate CRC32 of the rootfs
@@ -493,7 +523,7 @@ int main(int argc, const char* argv[])
 		trailer.fs_crc32 = htonl(crc);
 
 		// Calculate SHA256 of the file
-		calc_mixed_sha256(filebody, kernelsize + rootfssize, trailer.sha256);
+		calc_mixed_sha256(filebody, totalsize, trailer.sha256);
 
 		// Fill flags
 		trailer.fs_type = 1;
@@ -506,8 +536,7 @@ int main(int argc, const char* argv[])
 		outfile = fopen(openfile, "wb");
 
 		// Write the final data to the file
-		fwrite(kerneldata, 1, kernelsize, outfile);
-		fwrite(rootfsdata, 1, rootfssize, outfile);
+		fwrite(filebody, 1, totalsize, outfile);
 		fwrite(&trailer, 1, MSTC_TRAILER_SIZE, outfile);
 
 		// Cleanup

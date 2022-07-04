@@ -26,7 +26,7 @@ Creates a valid firmware file from 'kernel.bin' and 'rootfs.bin' files.
 ## Info
 - The device identifies the firmware package as RAS
 
-- File format: [Kernel (always 4096 bytes)] + [RootFS] + [Trailer]
+- File format: [Kernel (fixed size of 4MB)] + [RootFS] + [Trailer]
 
 - unk1 to unk8 fields on mstc_trailer struct are items that I could not figure out what they are for yet but based on reverse engineering the firmware upgrade routine on the device, they are not used, so they are set as 0x00 for now.
 
