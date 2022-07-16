@@ -57,6 +57,8 @@ struct mstc_trailer {
 #define MSTC_TRAILER_MAGIC 0x1B05CE17
 #define MSTC_TRAILER_SIZE sizeof(struct mstc_trailer)
 
+#define ROOTFS_SIZE_MAX 25165824
+#define RASFILE_SIZE_MAX 29360128
 #define KERNEL_SIZE (4 * 1024 * 1024) // 4MB
 
 /* Copyright (C) 1986 Gary S. Brown.  You may use this program, or
@@ -179,7 +181,12 @@ int checkras(FILE* rasfile, struct mstc_trailer* trailerout)
     rewind(rasfile);
 
     if (filesize < MSTC_TRAILER_SIZE) {
-        printf("File size too small.\n");
+        printf("File size is too small.\n");
+        return 0;
+    }
+
+    if (filesize > RASFILE_SIZE_MAX) {
+        printf("File size is too big.\n");
         return 0;
     }
 
@@ -212,7 +219,17 @@ int checkras(FILE* rasfile, struct mstc_trailer* trailerout)
         return 0;
     }
 
+    if (trailer.fs_len > ROOTFS_SIZE_MAX) {
+        printf("RootFS size is too big.\n");
+        return 0;
+    }
+
     uint32_t kernelsize = bodysize - trailer.fs_len;
+
+    if (kernelsize > KERNEL_SIZE) {
+        printf("Kernel size is too big.\n");
+        return 0;
+    }
 
     // Check rootfs CRC32
     crc_test = crc32buf(filebody + kernelsize, trailer.fs_len);
@@ -458,6 +475,12 @@ int main(int argc, const char* argv[])
         fseek(rootfsp, 0L, SEEK_END);
         rootfssize = ftell(rootfsp);
         rewind(rootfsp);
+
+        if (rootfssize > ROOTFS_SIZE_MAX) {
+            perror("RootFS file size is too large (Limit is 24MB)");
+            fclose(kernelp);
+            return 1;
+        }
 
         // Total file size
         totalsize = KERNEL_SIZE + rootfssize;
